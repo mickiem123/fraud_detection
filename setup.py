@@ -11,9 +11,10 @@ setup(
     install_requires=[
         "numpy",
         "pandas",
-        "sklearn",
+        "scikit-learn",
         "matplotlib",
         "seaborn"
     ],
     python_requires=">=3.7",
 )
+
