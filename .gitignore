@@ -129,6 +129,7 @@ celerybeat.pid
 
 # Environments
 .env
+fraud_detection_venv
 .venv
 env/
 venv/

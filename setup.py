@@ -6,8 +6,7 @@ setup(
     author="Huan",
     author_email="your.email@example.com",
     description="A machine learning project for fraud detection.",
-    packages=find_packages(where="src"),
-    package_dir={"": "src"},
+    packages=find_packages(),
     install_requires=[
         "numpy",
         "pandas",

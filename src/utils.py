@@ -4,7 +4,9 @@ import logging
 import sys
 import os
 from datetime import datetime
-
+import random
+import numpy as np
+import torch
 def setup_logger():
     """Set up a logger for the project with log file stored in log/ folder."""
     # Create log directory if it doesn't exist
@@ -12,7 +14,7 @@ def setup_logger():
     os.makedirs(log_dir, exist_ok=True)
 
     # Log file name as datetime
-    log_filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S.log")
+    log_filename = datetime.now().strftime("%Y-%m-%d.log")
     log_path = os.path.join(log_dir, log_filename)
 
     logger = logging.getLogger("fraud_detection_logger")
@@ -33,6 +35,18 @@ def setup_logger():
         logger.addHandler(stream_handler)
 
     return logger
+
+
+
+def seed_everything(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
+
 
 
 

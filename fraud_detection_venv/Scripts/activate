@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\thuhi\workspace\fraud_detection\fraud_detection_venv"
+VIRTUAL_ENV="C:\Users\thuhi\workspace\fraud_detection_venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
