@@ -1,89 +1,110 @@
 import os
-import sys 
+import sys
 import pandas as pd
-import numpy as np 
+import numpy as np
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 from src.exception import CustomException
 from src.utils import setup_logger
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
 
 logger = setup_logger()
+
+# Configuration class
 @dataclass
-class PreprocessorConfig():
-    """
-    Store col description here
-    """
-    windows_size = [1,7,30]
+class PreprocessorConfig:
+    """Configuration for preprocessing steps."""
+    windows_size = [1, 7, 30]
     delay = 7
 
-class Preprocessor():
-    def __init__(self, df: pd.DataFrame):
-        # Ensure TX_DATETIME is datetime type
-        
-        self.df = df.copy()
-        if not np.issubdtype(self.df["TX_DATETIME"].dtype, np.datetime64):
-            self.df["TX_DATETIME"] = pd.to_datetime(self.df["TX_DATETIME"])
-        self.config = PreprocessorConfig()
+# Abstract base class for processing steps
+class ProcessingStep(ABC):
+    @abstractmethod
+    def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply a processing step to the DataFrame and return the modified DataFrame."""
+        pass
 
-    def get_TX_DURING_WEEKEND(self):
+# Concrete step for TX_DURING_WEEKEND
+class WeekendStep(ProcessingStep):
+    def process(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            self.df["TX_DURING_WEEKEND"] = self.df["TX_DATETIME"].apply(lambda x: 1 if x.weekday() >= 5 else 0)
+            df["TX_DURING_WEEKEND"] = df["TX_DATETIME"].apply(lambda x: 1 if x.weekday() >= 5 else 0)
+            return df
         except Exception as e:
-            pass
+            logger.error(f"Error in WeekendStep: {e}")
+            raise CustomException(e, sys)
 
-    def get_TX_DURING_NIGHT(self):
-        self.df["TX_DURING_NIGHT"] = self.df["TX_DATETIME"].apply(lambda x: 1 if 0 < x.hour <= 6 else 0)
-
-    def get_CUSTOMER_ID_characteristic(self):
-        
+# Concrete step for TX_DURING_NIGHT
+class NightStep(ProcessingStep):
+    def process(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            logger.info("Initilizing get_CUSTOMER_ID_characteristic")
+            df["TX_DURING_NIGHT"] = df["TX_DATETIME"].apply(lambda x: 1 if 0 < x.hour <= 6 else 0)
+            return df
+        except Exception as e:
+            logger.error(f"Error in NightStep: {e}")
+            raise CustomException(e, sys)
+
+# Concrete step for CUSTOMER_ID_characteristic
+class CustomerCharacteristicStep(ProcessingStep):
+    def __init__(self, config: PreprocessorConfig):
+        self.config = config
+
+    def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        try:
+            logger.info("Initializing CustomerCharacteristicStep")
             for size in self.config.windows_size:
                 logger.info(f"Starting for {size}d_WINDOW")
-
-                self.df.sort_values("TX_DATETIME",inplace=True)
+                df.sort_values("TX_DATETIME", inplace=True)
+                
                 logger.info("Calculating WINDOW_TX_COUNT")
                 WINDOW_TX_COUNT = (
-                    self.df.groupby("CUSTOMER_ID")
+                    df.groupby("CUSTOMER_ID")
                     .rolling(f"{size}d", on="TX_DATETIME")["TRANSACTION_ID"].count()
                     .reset_index()
                     .rename(columns={"TRANSACTION_ID": f"CUSTOMER_ID_NB_TX_{size}DAY_WINDOW"})
                 )
+                
                 logger.info("Calculating WINDOW_TX_MEAN")
                 WINDOW_TX_MEAN = (
-                    self.df.groupby("CUSTOMER_ID")
+                    df.groupby("CUSTOMER_ID")
                     .rolling(f"{size}d", on="TX_DATETIME")["TX_AMOUNT"].mean()
                     .reset_index()
                     .rename(columns={"TX_AMOUNT": f"CUSTOMER_ID_AVG_AMOUNT_{size}DAY_WINDOW"})
                 )
-
-                logger.info("Merging WINDOW_TX_COUNT into self.df")
-                self.df[[ "CUSTOMER_ID","TX_DATETIME", f"CUSTOMER_ID_NB_TX_{size}DAY_WINDOW"]] = WINDOW_TX_COUNT
-                logger.info("Merging WINDOW_TX_MEAN into self.df")
-                self.df[["CUSTOMER_ID","TX_DATETIME", f"CUSTOMER_ID_AVG_AMOUNT_{size}DAY_WINDOW"]] = WINDOW_TX_MEAN
-                self.df['TX_DATETIME'] = pd.to_datetime(self.df['TX_DATETIME'])
+                
+                logger.info("Merging WINDOW_TX_COUNT and WINDOW_TX_MEAN into df")
+                df[f"CUSTOMER_ID_NB_TX_{size}DAY_WINDOW"] = WINDOW_TX_COUNT[f"CUSTOMER_ID_NB_TX_{size}DAY_WINDOW"]
+                df[f"CUSTOMER_ID_AVG_AMOUNT_{size}DAY_WINDOW"] = WINDOW_TX_MEAN[f"CUSTOMER_ID_AVG_AMOUNT_{size}DAY_WINDOW"]
+            return df
         except Exception as e:
+            logger.error(f"Error in CustomerCharacteristicStep: {e}")
             raise CustomException(e, sys)
 
-    def get_TERMINAL_ID_characteristic(self):
+# Concrete step for TERMINAL_ID_characteristic
+class TerminalCharacteristicStep(ProcessingStep):
+    def __init__(self, config: PreprocessorConfig):
+        self.config = config
+
+    def process(self, df: pd.DataFrame) -> pd.DataFrame:
         try:
-            logger.info("Initializing get_TERMINAL_ID_characteristic")
+            logger.info("Initializing TerminalCharacteristicStep")
             logger.info("Calculating FRAUD_DELAY and TX_DELAY")
-            FRAUD_DELAY = self.df.groupby("TERMINAL_ID").rolling(
-            f"{self.config.delay}D", on="TX_DATETIME"
+            FRAUD_DELAY = df.groupby("TERMINAL_ID").rolling(
+                f"{self.config.delay}D", on="TX_DATETIME"
             )["TX_FRAUD"].sum()
-            TX_DELAY = self.df.groupby("TERMINAL_ID").rolling(
-            f"{self.config.delay}D", on="TX_DATETIME"
+            TX_DELAY = df.groupby("TERMINAL_ID").rolling(
+                f"{self.config.delay}D", on="TX_DATETIME"
             )["TX_FRAUD"].count()
+
             for size in self.config.windows_size:
                 logger.info(f"Calculating rolling sums/counts for {size}d_WINDOW + delay")
-                self.df.sort_values(["TERMINAL_ID","TX_DATETIME"],inplace= True)
-                logger.info("Sorted values for TERMINAL_ID,TX_DATETIME]")
-                FRAUD_DELAY_WINDOW = self.df.groupby("TERMINAL_ID").rolling(
+                df.sort_values(["TERMINAL_ID", "TX_DATETIME"], inplace=True)
+                
+                FRAUD_DELAY_WINDOW = df.groupby("TERMINAL_ID").rolling(
                     f"{size + self.config.delay}D", on="TX_DATETIME"
                 )["TX_FRAUD"].sum()
-                TX_DELAY_WINDOW = self.df.groupby("TERMINAL_ID").rolling(
+                TX_DELAY_WINDOW = df.groupby("TERMINAL_ID").rolling(
                     f"{size + self.config.delay}D", on="TX_DATETIME"
                 )["TX_FRAUD"].count()
 
@@ -92,26 +113,49 @@ class Preprocessor():
                 TX_WINDOW = TX_DELAY_WINDOW - TX_DELAY
                 RISK_WINDOW = FRAUD_WINDOW / TX_WINDOW
                 
-                logger.info(f"Inserting TX_WINDOW and RISK_WINDOW to self.df for {size}d_WINDOW")
-                self.df.sort_values(["TERMINAL_ID","TX_DATETIME"],inplace= True)
-                logger.info("Sorted values for TERMINAL_ID,TX_DATETIME]")
-                self.df[["TERMINAL_ID","TX_DATETIME",f'TERMINAL_ID_NB_TX_{size}DAY_WINDOW']] = TX_WINDOW.reset_index().fillna(0)
-                self.df[["TERMINAL_ID","TX_DATETIME",f'TERMINAL_ID_RISK_{size}DAY_WINDOW']]= RISK_WINDOW.reset_index().fillna(0)
-
+                logger.info(f"Inserting TX_WINDOW and RISK_WINDOW to df for {size}d_WINDOW")
+                df[f"TERMINAL_ID_NB_TX_{size}DAY_WINDOW"] = TX_WINDOW.reset_index(drop=True).fillna(0)
+                df[f"TERMINAL_ID_RISK_{size}DAY_WINDOW"] = RISK_WINDOW.reset_index(drop=True).fillna(0)
+            return df
         except Exception as e:
-            logger.error(f"Error in get_TERMINAL_ID_characteristic: {e}")
+            logger.error(f"Error in TerminalCharacteristicStep: {e}")
             raise CustomException(e, sys)
-            
+
+# Pipeline class to manage and execute steps
+class PreprocessorPipeline:
+    def __init__(self, df: pd.DataFrame, config: PreprocessorConfig):
+        self.df = df.copy()
+        if not np.issubdtype(self.df["TX_DATETIME"].dtype, np.datetime64):
+            self.df["TX_DATETIME"] = pd.to_datetime(self.df["TX_DATETIME"])
+        self.config = config
+        self.steps = [
+            WeekendStep(),
+            NightStep(),
+            CustomerCharacteristicStep(self.config),
+            TerminalCharacteristicStep(self.config)
+        ]
+
+    def process(self) -> pd.DataFrame:
+        """Run all preprocessing steps in sequence."""
+        current_df = self.df.copy()
+        for step in self.steps:
+            logger.info(f"Executing step: {step.__class__.__name__}")
+            current_df = step.process(current_df)
+        self.df = current_df
+        return self.df
+
+# Main function
 def main():
-    # Example: Load a sample file and run the terminal ID characteristic function
     df = pd.DataFrame()
-    for file in os.listdir(rf"C:\Users\thuhi\workspace\fraud_detection\data\raw_data"):
-        temp = pd.read_pickle(os.path.join(rf"C:\Users\thuhi\workspace\fraud_detection\data\raw_data", file))
+    data_dir = r"C:\Users\thuhi\workspace\fraud_detection\data\raw_data"
+    for file in os.listdir(data_dir):
+        temp = pd.read_pickle(os.path.join(data_dir, file))
         df = pd.concat([df, temp])
 
-    preprocessor = Preprocessor(df)
-    preprocessor.get_CUSTOMER_ID_characteristic()
-    print(preprocessor.df)
+    config = PreprocessorConfig()
+    pipeline = PreprocessorPipeline(df, config)
+    processed_df = pipeline.process()
+    print(processed_df)
 
 if __name__ == "__main__":
     main()
