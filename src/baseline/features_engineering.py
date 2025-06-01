@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from src.exception import CustomException
 from src.utils import setup_logger
+from src.components.data_ingestion import DataIngestorFactory
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
 
@@ -28,6 +29,7 @@ class ProcessingStep(ABC):
 # Concrete step for TX_DURING_WEEKEND
 class WeekendStep(ProcessingStep):
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        logger.info("Starting WeekendStep")
         try:
             df["TX_DURING_WEEKEND"] = df["TX_DATETIME"].apply(lambda x: 1 if x.weekday() >= 5 else 0)
             return df
@@ -38,6 +40,7 @@ class WeekendStep(ProcessingStep):
 # Concrete step for TX_DURING_NIGHT
 class NightStep(ProcessingStep):
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        logger.info("Starting NightStep")
         try:
             df["TX_DURING_NIGHT"] = df["TX_DATETIME"].apply(lambda x: 1 if 0 < x.hour <= 6 else 0)
             return df
@@ -51,6 +54,7 @@ class CustomerCharacteristicStep(ProcessingStep):
         self.config = config
 
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        logger.info("Starting CustomerCharacteristicStep")
         try:
             logger.info("Initializing CustomerCharacteristicStep")
             for size in self.config.windows_size:
@@ -87,6 +91,7 @@ class TerminalCharacteristicStep(ProcessingStep):
         self.config = config
 
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
+        logger.info("Starting TerminalCharacteristicStep")
         try:
             logger.info("Initializing TerminalCharacteristicStep")
             logger.info("Calculating FRAUD_DELAY and TX_DELAY")
@@ -124,7 +129,9 @@ class TerminalCharacteristicStep(ProcessingStep):
 # Pipeline class to manage and execute steps
 class PreprocessorPipeline:
     def __init__(self, df: pd.DataFrame, config: PreprocessorConfig):
+        logger.info("Initiating processing")
         self.df = df.copy()
+
         if not np.issubdtype(self.df["TX_DATETIME"].dtype, np.datetime64):
             self.df["TX_DATETIME"] = pd.to_datetime(self.df["TX_DATETIME"])
         self.config = config
@@ -140,22 +147,38 @@ class PreprocessorPipeline:
         current_df = self.df.copy()
         for step in self.steps:
             logger.info(f"Executing step: {step.__class__.__name__}")
-            current_df = step.process(current_df)
+            try:
+                current_df = step.process(current_df)
+            except Exception as e:
+                logger.error(f"Exception in pipeline step {step.__class__.__name__}: {e}")
+                raise CustomException(e, sys)
         self.df = current_df
         return self.df
 
 # Main function
 def main():
-    df = pd.DataFrame()
-    data_dir = r"C:\Users\thuhi\workspace\fraud_detection\data\raw_data"
-    for file in os.listdir(data_dir):
-        temp = pd.read_pickle(os.path.join(data_dir, file))
-        df = pd.concat([df, temp])
+    factory = DataIngestorFactory()
+    ingestor = factory.create_ingestor("duration_pkl")
+
+    train_df, test_df = ingestor.ingest(
+        rf"C:\Users\thuhi\workspace\fraud_detection\data\raw_data",
+        start_train_date="2018-04-01",
+        train_duration=7,
+        delay=7,
+        test_duration=7)
 
     config = PreprocessorConfig()
-    pipeline = PreprocessorPipeline(df, config)
-    processed_df = pipeline.process()
-    print(processed_df)
+    for df in [train_df, test_df]:
+        pipeline = PreprocessorPipeline(df, config)
+        processed_df = pipeline.process()
+
+        if df is train_df:
+            output_path = os.path.join("artifact", "processed_train_data.csv")
+        else:
+            output_path = os.path.join("artifact", "processed_test_data.csv")
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        processed_df.to_csv(output_path, index=False)
+        print(processed_df)
 
 if __name__ == "__main__":
     main()
