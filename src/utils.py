@@ -7,6 +7,7 @@ from datetime import datetime
 import random
 import numpy as np
 import torch
+
 def setup_logger():
     """Set up a logger for the project with log file stored in log/ folder."""
     # Create log directory if it doesn't exist
@@ -48,5 +49,6 @@ def seed_everything(seed=42):
     torch.backends.cudnn.benchmark = True
 
 
+    
 
 
