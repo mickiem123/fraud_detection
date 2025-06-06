@@ -94,7 +94,7 @@ class DurationTrainTestDataIngestor(DataIngestor):
                end_train_date = None,end_test_date = None,start_test_date = None) -> pd.DataFrame:
         try:
             #logger.info(f"Calculating dates")
-
+            self.dir_path = dir_path
             if not end_train_date:
                 end_train_date = pd.Timestamp(start_train_date) + pd.Timedelta(days=train_duration)
                 
@@ -144,7 +144,7 @@ class DurationTrainTestDataIngestor(DataIngestor):
         Returns:
             pd.DataFrame: Concatenated DataFrame from all files.
         """
-        files_list = pd.Series(files_list).map(lambda x: os.path.join("data","raw_data",f"{x}.pkl"))
+        files_list = pd.Series(files_list).map(lambda x: os.path.join(self.dir_path,f"{x}.pkl"))
         ##logger.info(files_list)
         df = pd.DataFrame()
         for file in files_list:

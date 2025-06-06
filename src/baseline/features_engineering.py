@@ -1,17 +1,21 @@
-
-import os
-import sys
+from src.components.nn_data_ingestion import FraudDetectionDataset
+from src.baseline.data_ingestion import DataIngestorFactory, DataIngestorConfig
+from torch.utils.data import DataLoader
+from pytorch_lightning.loggers import TensorBoardLogger
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint  # Updated import
+from src.utils import setup_logger, seed_everything
+from src.exception import CustomException
 import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import sys
 import numpy as np
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from src.exception import CustomException
-from src.utils import setup_logger
-from src.baseline.data_ingestion import DataIngestorFactory, DataIngestorConfig
-import warnings
 from imblearn.over_sampling import SMOTE
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+
+import warnings
 
 # Suppress pandas UserWarning to avoid cluttering logs
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
@@ -97,7 +101,7 @@ class NightStep(ProcessingStep):
         """
         ##logger.info("Starting NightStep")
         try:
-            df["TX_DURING_NIGHT"] = df["TX_DATETIME"].apply(lambda x: 1 if 0 < x.hour <= 6 else 0)
+            df["TX_DURING_NIGHT"] = df["TX_DATETIME"].apply(lambda x: 1 if x.hour <= 6 else 0)
             return df
         except Exception as e:
             logger.error(f"Error in NightStep: {e}")
@@ -306,32 +310,32 @@ class PreprocessorPipeline:
     Converts the `TX_DATETIME` column to datetime if necessary.
     """
 
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame, exclude_method: list = [],add_method:list =["weekend","night","customer_char","terminal_char","smote",'scale']):
         """Initialize the pipeline with a DataFrame and configuration.
 
         Args:
             df (pd.DataFrame): Input DataFrame to preprocess.
-            
+            exclude_method (list): List of step types to exclude, e.g., ["add features", "scale", "smote"]
         """
-        ##logger.info("Initiating processing")
         self.df = df.copy()
-
+        smote_ratio = 1
         # Convert TX_DATETIME to datetime if not already in datetime64 format
         if not np.issubdtype(self.df["TX_DATETIME"].dtype, np.datetime64):
             self.df["TX_DATETIME"] = pd.to_datetime(self.df["TX_DATETIME"])
         self.config = PreprocessorConfig()
-        self.steps = [
-            
-            WeekendStep(),
-            NightStep(),
-            
-            CustomerCharacteristicStep(self.config),
-            TerminalCharacteristicStep(self.config),
-            SMOTEStep(0.5),
-            ScaleStep(),
-           
-            
+        # Define steps with tags for exclusion
+        steps_with_tags = [
+            ("weekend", WeekendStep()),
+            ("night", NightStep()),
+            ("customer_char", CustomerCharacteristicStep(self.config)),
+            ("terminal_char", TerminalCharacteristicStep(self.config)),
+            ("smote", SMOTEStep(smote_ratio)),
+            ("scale", ScaleStep()),
         ]
+        
+      
+        self.steps = [step for tag, step in steps_with_tags if tag in add_method and tag not in exclude_method]
+        
 
     def process(self) -> pd.DataFrame:
         """Run all preprocessing steps in sequence.
@@ -353,34 +357,3 @@ class PreprocessorPipeline:
         self.df = current_df
         return self.df
 
-def main():
-    """Main function to load, preprocess, and save training and test datasets.
-
-    Loads data using DataIngestorFactory, applies the preprocessing pipeline to both training and test DataFrames,
-    and saves the processed DataFrames to CSV files in the 'artifact' directory.
-    """
-    factory = DataIngestorFactory()
-    ingestor = factory.create_ingestor("duration_pkl")
-
-    train_df, test_df = ingestor.ingest(
-        rf"C:\Users\thuhi\workspace\fraud_detection\data\raw_data",
-        start_train_date="2018-04-01",
-        train_duration=7,
-        delay=7,
-        test_duration=7)
-
-    
-    for df in [train_df, test_df]:
-        pipeline = PreprocessorPipeline(df)
-        processed_df = pipeline.process()
-
-        if df is train_df:
-            output_path = os.path.join("artifact", "processed_train_data.csv")
-        else:
-            output_path = os.path.join("artifact", "processed_test_data.csv")
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        processed_df.to_csv(output_path, index=False)
-        print(processed_df)
-
-if __name__ == "__main__":
-    main()

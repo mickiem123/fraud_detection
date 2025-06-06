@@ -17,10 +17,11 @@ from src.exception import CustomException
 from src.baseline.features_engineering import PreprocessorPipeline
 
 import warnings
+from datetime import datetime
 warnings.filterwarnings("ignore")
 
 logger = setup_logger()
-seed_everything()
+
 
 class Feed_Forward_NN(L.LightningModule):
     def __init__(self, input_size, hidden_size,pos_weight ):
@@ -28,7 +29,13 @@ class Feed_Forward_NN(L.LightningModule):
         self.model = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, 1)
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(p=0.4),
+            nn.Linear(hidden_size, hidden_size // 2),  # Use integer division
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size // 2),
+            
+            nn.Linear(hidden_size // 2, 1)
         )
         self.learning_rate = 0.001
         self.ap = AveragePrecision(task="binary")
@@ -113,22 +120,24 @@ if __name__ == "__main__":
     
     batch_size = 2048
     epoch = 40
-    patience = 15
-    pos_mul = 0.6
+    patience = 10
+    pos_mul = 1
+    train_duration=35
+    test_duration=7
     seed_everything(42)
     
     factory = DataIngestorFactory()
     ingestor = factory.create_ingestor("duration_pkl")
     train_df, validation_df = ingestor.ingest(
-        dir_path=rf"C:\Users\thuhi\workspace\fraud_detection\data\raw_data",
-        start_train_date="2018-08-01",
-        train_duration=7,
-        test_duration=7,
+        dir_path=rf"C:\Users\thuhi\workspace\fraud_detection\data\transformed_data",
+        start_train_date="2018-05-15",
+        train_duration=train_duration,
+        test_duration=test_duration,
         delay=7
     )
 
-    train_preprocessed = PreprocessorPipeline(train_df).process()
-    validation_preprocessed = PreprocessorPipeline(validation_df).process()
+    train_preprocessed = PreprocessorPipeline(train_df,add_method=["smote","scale"]).process()
+    validation_preprocessed = PreprocessorPipeline(validation_df,add_method=["smote",'scale']).process()
     pos_weight = pos_mul * 1/torch.tensor(train_preprocessed[DataIngestorConfig().output_feature].sum()
                               / (len(train_preprocessed) - train_preprocessed[DataIngestorConfig().output_feature].sum()))
     pos = train_df[DataIngestorConfig().output_feature].sum()
@@ -175,9 +184,15 @@ if __name__ == "__main__":
         verbose=True
     )
 
+    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     checkpoint_callback = ModelCheckpoint(
         dirpath="checkpoints/",
-        filename="best-model-{epoch:02d}-{val_loss:.2f}-{pos_weight:.2f}",
+        filename=(
+            f"best-model-{date_str}-"
+            f"bs{batch_size}-ep{epoch}-pat{patience}-{pos_weight}-"
+            f"traindur{train_duration}-testdur{test_duration}-"
+            "{epoch:02d}-{val_loss:.2f}"
+        ),
         monitor="val_loss",
         save_top_k=1,
         mode="min",
@@ -191,7 +206,7 @@ if __name__ == "__main__":
         accelerator="auto",
         devices="auto",
         logger=logger,
-        callbacks=checkpoint_callback
+        callbacks=[early_stop_callback,checkpoint_callback]
         
     )
     
