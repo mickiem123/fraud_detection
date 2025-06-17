@@ -51,9 +51,9 @@ class DataIngestorConfig():
        'TERMINAL_ID_RISK_1DAY_WINDOW', 'TERMINAL_ID_NB_TX_7DAY_WINDOW',
        'TERMINAL_ID_RISK_7DAY_WINDOW', 'TERMINAL_ID_NB_TX_30DAY_WINDOW',
        'TERMINAL_ID_RISK_30DAY_WINDOW']
-    input_features = ["TRANSACTION_ID",		"CUSTOMER_ID",	"TERMINAL_ID",	"TX_AMOUNT",
-                      "TX_TIME_SECONDS",	"TX_TIME_DAYS"]
 
+    input_features = ["TRANSACTION_ID",		"CUSTOMER_ID",	"TERMINAL_ID",	"TX_AMOUNT",
+                      "TX_TIME_SECONDS",	"TX_TIME_DAYS","TX_DATETIME(timestamp)"]
         
 class DataIngestor(ABC):
     """

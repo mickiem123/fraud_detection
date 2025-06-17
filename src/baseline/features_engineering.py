@@ -1,13 +1,10 @@
-from src.components.nn_data_ingestion import FraudDetectionDataset
+
 from src.baseline.data_ingestion import DataIngestorFactory, DataIngestorConfig
-from torch.utils.data import DataLoader
-from pytorch_lightning.loggers import TensorBoardLogger
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint  # Updated import
+  # Updated import
 from src.utils import setup_logger, seed_everything
 from src.exception import CustomException
 import pandas as pd
-import os
-import matplotlib.pyplot as plt
+
 import sys
 import numpy as np
 from dataclasses import dataclass
@@ -241,13 +238,14 @@ class SMOTEStep(ProcessingStep):
     Uses Synthetic Minority Oversampling Technique (SMOTE) to generate synthetic samples for the minority class
     to address class imbalance in the dataset.
     """
-    def __init__(self, target_minority_percentage: float = 0.5):
+    def __init__(self, target_minority_percentage: float = 0.5,include_datetime = False):
         """Initialize the SMOTE step with a target minority percentage.
 
         Args:
             target_minority_percentage (float): Desired percentage of minority class in the balanced dataset.
         """
         self.target_minority_percentage = target_minority_percentage
+        self.include_datetime = include_datetime
         ##logger.info("Initializing SMOTEStep")
     def process(self, df: pd.DataFrame) -> pd.DataFrame:
         """Apply SMOTE to balance the class distribution in the DataFrame.
@@ -265,7 +263,8 @@ class SMOTEStep(ProcessingStep):
             ##logger.info("Starting SMOTE step")
             
             X_train = df[DataIngestorConfig.input_features_transformed]
-            
+            if self.include_datetime:
+                datetime = df["TX_DATETIME"]
             y_train = df[DataIngestorConfig.output_feature]
             #logger.info(f"{X_train.isna().sum(),y_train.isna().sum()}")
             # Calculate original class distribution
@@ -291,6 +290,7 @@ class SMOTEStep(ProcessingStep):
             return train_df_smote
         except Exception as e:
             raise CustomException(e, sys)
+
 class ScaleStep(ProcessingStep):
     def process(self, df):
         try:
@@ -298,11 +298,13 @@ class ScaleStep(ProcessingStep):
             
             minmax_scaler = MinMaxScaler()
             df_scaled = df.copy()
-            df_scaled[DataIngestorConfig.input_features_transformed] = minmax_scaler.fit_transform(df[DataIngestorConfig.input_features_transformed])
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.difference([DataIngestorConfig.output_feature])
+            df_scaled[numeric_cols] = minmax_scaler.fit_transform(df[numeric_cols])
             return df_scaled
         except Exception as e:
             logger.error(f"Error in ScaleStep: {e}")
             raise CustomException(e, sys)
+
 class PreprocessorPipeline:
     """Pipeline to execute a sequence of preprocessing steps on a DataFrame.
 
@@ -310,7 +312,7 @@ class PreprocessorPipeline:
     Converts the `TX_DATETIME` column to datetime if necessary.
     """
 
-    def __init__(self, df: pd.DataFrame, exclude_method: list = [],add_method:list =["weekend","night","customer_char","terminal_char","smote",'scale']):
+    def __init__(self, df: pd.DataFrame, exclude_method: list = [],add_method:list =["weekend","night","customer_char","terminal_char","smote",'scale'],include_datetime = False):
         """Initialize the pipeline with a DataFrame and configuration.
 
         Args:
@@ -329,7 +331,7 @@ class PreprocessorPipeline:
             ("night", NightStep()),
             ("customer_char", CustomerCharacteristicStep(self.config)),
             ("terminal_char", TerminalCharacteristicStep(self.config)),
-            ("smote", SMOTEStep(smote_ratio)),
+            ("smote", SMOTEStep(smote_ratio, include_datetime)),
             ("scale", ScaleStep()),
         ]
         

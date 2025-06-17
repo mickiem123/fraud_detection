@@ -46,20 +46,6 @@ class Feed_Forward_NN(L.LightningModule):
         self.pos_weight = pos_weight
        # Updated to use Precision with task="binary"
 
-    def focal_loss(self, inputs, targets, alpha, gamma):
-        """
-        Compute Focal Loss for binary classification.
-        
-        Args:
-            inputs (torch.Tensor): Raw model outputs (logits).
-            targets (torch.Tensor): True labels (0 or 1).
-            
-        Returns:
-            torch.Tensor: Computed focal loss (unreduced).
-        """
-        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-        pt = torch.exp(-BCE_loss)
-        return (alpha * (1 - pt) ** gamma * BCE_loss).sum()
 
     def forward(self, x):
         return self.model(x)
