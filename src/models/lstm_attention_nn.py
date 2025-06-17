@@ -5,12 +5,12 @@ import lightning as L
 import torch.nn.functional as F
 from torchmetrics import AveragePrecision, Precision, Recall, F1Score
 from src.components.nn_data_ingestion import SequentialFraudDetectionDataset
-from src.baseline.data_ingestion import DataIngestorFactory, DataIngestorConfig
+from src.components.data_ingestion import DataIngestorFactory, DataIngestorConfig
 from torch.utils.data import DataLoader
 from pytorch_lightning.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint  # Updated import
 from src.utils import setup_logger, seed_everything
-from src.baseline.features_engineering import PreprocessorPipeline
+from src.components.features_engineering import PreprocessorPipeline
 from lightning.pytorch.profilers import AdvancedProfiler,SimpleProfiler,PyTorchProfiler
 import warnings
 from datetime import datetime

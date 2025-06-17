@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader,Dataset
-from src.baseline.data_ingestion import DataIngestorFactory,DataIngestorConfig
+from src.components.data_ingestion import DataIngestorFactory,DataIngestorConfig
 from src.utils import setup_logger
 import os
 import pandas as pd

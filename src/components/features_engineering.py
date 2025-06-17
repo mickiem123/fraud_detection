@@ -1,5 +1,5 @@
 
-from src.baseline.data_ingestion import DataIngestorFactory, DataIngestorConfig
+from src.components.data_ingestion import DataIngestorFactory, DataIngestorConfig
   # Updated import
 from src.utils import setup_logger, seed_everything
 from src.exception import CustomException
